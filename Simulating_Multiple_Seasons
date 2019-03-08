@@ -1,0 +1,105 @@
+# -*- coding: utf-8 -*-
+import numpy as np
+import pandas as pd
+import h5py
+import matplotlib.pyplot as plt
+import copy
+import matplotlib as plt
+import seaborn as sns
+
+s = 400
+
+def delta_score(dR,p):
+    return  (dR-s*np.log((1-p)/p)/np.log(10))/28
+    
+def multiplier(dS,dR):
+    return 20*(dS+3)**.8/(7.5+.006*dR)
+
+def delta_update(dR,k):
+    return k*1/(1+10**(dR/s))
+
+
+df = pd.read_csv('nbaallelo.csv')
+
+df15 = df[(df['year_id']==2015)&(df['_iscopy']==1)&(df['is_playoffs']==0)]
+df15 = df15.drop(columns = ['_iscopy','lg_id','notes','fran_id','opp_fran','seasongame','is_playoffs','game_id'])
+
+teams = df15['team_id'].unique()
+
+Elo = pd.DataFrame(teams)
+Elo['elo'] = 0
+Elo.columns = ['team','elo']
+Elo = Elo.set_index(['team'])
+
+n_seasons =5000
+
+n_wins = np.zeros((n_seasons,1))
+fin_elo = np.zeros((n_seasons,1))
+sea_elo = np.zeros((n_seasons,83))
+
+
+for epoch in range(n_seasons):
+    
+    elo = copy.deepcopy(Elo)
+    
+    for team in teams:
+        temp = (df15.index[(df15['team_id']==team)|(df15['opp_id']==team)])[0]
+        if df15['team_id'].loc[temp] == team:
+            elo.at[team,'elo'] = df15['elo_i'].loc[temp]
+        elif df15['opp_id'].loc[temp] == team:
+            elo.at[team,'elo'] = df15['opp_elo_i'].loc[temp]
+        else:
+            print('error')
+
+    
+    
+    
+    df15['p'] = random.uniform(0,1,df15.shape[0]).reshape((df15.shape[0],1))
+
+    
+    tempS = zeros((df15.shape[0],1))
+    tempmult  = zeros((df15.shape[0],1))
+    
+    elo_Det = zeros((83,1))
+    score_Det = zeros((82,1))
+    elo_Det[0,0] = elo.loc['DET']
+    
+    temp=0
+
+    for i in range(df15.shape[0]):
+    
+        team_h = df15.iloc[i].at['team_id']
+        team_a = df15.iloc[i].at['opp_id']
+        temp_dR = elo.at[team_h,'elo']-100-elo.at[team_a,'elo']
+        temp_dS = delta_score(temp_dR,df15.iloc[i].at['p'])
+        temp_mult = multiplier(np.abs(temp_dS),temp_dR)
+        tempS[i,0] = temp_dS
+        tempmult[i,0] = temp_mult
+        d_elo = (1-1/(1+10**(-np.sign(temp_dS)*temp_dR/400)))*temp_mult
+    
+        elo.at[team_h,'elo']+= np.sign(temp_dS)*d_elo
+        elo.at[team_a,'elo']+= -np.sign(temp_dS)*d_elo
+        
+        if ((team_h=='DET')|(team_a=='DET')):
+            if (team_h=='DET'):
+                score_Det[temp,0] = temp_dS
+            else:
+                score_Det[temp,0] = -temp_dS
+            temp=temp+1
+            elo_Det[temp,0] = elo.at['DET','elo']
+        else:
+            None
+    
+    
+    
+    n_wins[epoch,0] = (score_Det>0).sum()
+    fin_elo[epoch,0] = elo_Det[-1,0]
+    sea_elo[epoch,:] = elo_Det.reshape(83,)
+
+
+def selecting(x):
+    if x['team_id']=='DET':
+        return x['elo_i']
+    else:
+        return x['opp_elo_i']
+        
